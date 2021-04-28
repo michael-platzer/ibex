@@ -550,8 +550,13 @@ module ibex_id_stage #(
   // Controller //
   ////////////////
 
+  // TODO Find a way to receive illegal instruction exceptions from the coprocessor when using the
+  // write-back stage. Currently, when WritebackStage is enabled this leads to a combinational loop
+  // with following signals:
+  // illegal_insn_o -> rf_ren_[a|b] -> rf_rd_[a|b]_hz -> stall_ld_hz -> instr_executing_spec ->
+  // instr_executing -> cpi_req_o
   assign illegal_insn_o = instr_valid_i & (illegal_insn_dec | illegal_csr_insn_i |
-                          (cpi_req_o & cpi_gnt_i & cpi_instr_illegal_i));
+                          (~WritebackStage & cpi_req_o & cpi_gnt_i & cpi_instr_illegal_i));
 
   ibex_controller #(
     .WritebackStage  ( WritebackStage  ),
