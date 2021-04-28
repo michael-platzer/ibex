@@ -550,7 +550,8 @@ module ibex_id_stage #(
   // Controller //
   ////////////////
 
-  assign illegal_insn_o = instr_valid_i & (illegal_insn_dec | illegal_csr_insn_i | (cpi_req_o & cpi_gnt_i & cpi_instr_illegal_i));
+  assign illegal_insn_o = instr_valid_i & (illegal_insn_dec | illegal_csr_insn_i |
+                          (cpi_req_o & cpi_gnt_i & cpi_instr_illegal_i));
 
   ibex_controller #(
     .WritebackStage  ( WritebackStage  ),
@@ -1035,7 +1036,8 @@ module ibex_id_stage #(
                                (outstanding_memory_access | stall_ld_hz);
   end else begin : gen_no_stall_mem
 
-    assign multicycle_done = lsu_req_dec ? lsu_resp_valid_i : (cpi_instr_dec ? cpi_done : ex_valid_i);
+    assign multicycle_done = lsu_req_dec ? lsu_resp_valid_i :
+                             (cpi_instr_dec ? cpi_done : ex_valid_i);
 
     assign data_req_allowed = instr_first_cycle;
 
