@@ -36,7 +36,8 @@ module ibex_core import ibex_pkg::*; #(
     parameter bit          RegFileECC        = 1'b0,
     parameter int unsigned RegFileDataWidth  = 32,
     parameter int unsigned DmHaltAddr        = 32'h1A110800,
-    parameter int unsigned DmExceptionAddr   = 32'h1A110808
+    parameter int unsigned DmExceptionAddr   = 32'h1A110808,
+    parameter bit [31:0]   CoprocOpcodes     = '0
 ) (
     // Clock and Reset
     input  logic                         clk_i,
@@ -63,6 +64,17 @@ module ibex_core import ibex_pkg::*; #(
     output logic [31:0]                  data_wdata_o,
     input  logic [31:0]                  data_rdata_i,
     input  logic                         data_err_i,
+
+    // Coprocessor Interface
+    output logic                         cpi_req_o,
+    output logic [31:0]                  cpi_instr_o,
+    output logic [31:0]                  cpi_rs1_o,
+    output logic [31:0]                  cpi_rs2_o,
+    input  logic                         cpi_gnt_i,
+    input  logic                         cpi_instr_illegal_i,
+    input  logic                         cpi_wait_i,
+    input  logic                         cpi_res_valid_i,
+    input  logic [31:0]                  cpi_res_i,
 
     // Register file interface
     output logic                         dummy_instr_id_o,
@@ -487,7 +499,8 @@ module ibex_core import ibex_pkg::*; #(
       .DataIndTiming   ( DataIndTiming   ),
       .SpecBranch      ( SpecBranch      ),
       .WritebackStage  ( WritebackStage  ),
-      .BranchPredictor ( BranchPredictor )
+      .BranchPredictor ( BranchPredictor ),
+      .CoprocOpcodes   ( CoprocOpcodes   )
   ) id_stage_i (
       .clk_i                        ( clk_i                    ),
       .rst_ni                       ( rst_ni                   ),
@@ -580,6 +593,17 @@ module ibex_core import ibex_pkg::*; #(
 
       .lsu_load_err_i               ( lsu_load_err             ),
       .lsu_store_err_i              ( lsu_store_err            ),
+
+      // Coprocessor Interface
+      .cpi_req_o                    ( cpi_req_o                ),
+      .cpi_instr_o                  ( cpi_instr_o              ),
+      .cpi_rs1_o                    ( cpi_rs1_o                ),
+      .cpi_rs2_o                    ( cpi_rs2_o                ),
+      .cpi_gnt_i                    ( cpi_gnt_i                ),
+      .cpi_instr_illegal_i          ( cpi_instr_illegal_i      ),
+      .cpi_wait_i                   ( cpi_wait_i               ),
+      .cpi_res_valid_i              ( cpi_res_valid_i          ),
+      .cpi_res_i                    ( cpi_res_i                ),
 
       // Interrupt Signals
       .csr_mstatus_mie_i            ( csr_mstatus_mie          ),

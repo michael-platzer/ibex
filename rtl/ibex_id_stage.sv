@@ -25,7 +25,8 @@ module ibex_id_stage #(
     parameter bit               BranchTargetALU = 0,
     parameter bit               SpecBranch      = 0,
     parameter bit               WritebackStage  = 0,
-    parameter bit               BranchPredictor = 0
+    parameter bit               BranchPredictor = 0,
+    parameter bit [31:0]        CoprocOpcodes   = '0
 ) (
     input  logic                      clk_i,
     input  logic                      rst_ni,
@@ -121,6 +122,17 @@ module ibex_id_stage #(
 
     input  logic                      lsu_addr_incr_req_i,
     input  logic [31:0]               lsu_addr_last_i,
+
+    // Coprocessor Interface
+    output logic                      cpi_req_o,
+    output logic [31:0]               cpi_instr_o,
+    output logic [31:0]               cpi_rs1_o,
+    output logic [31:0]               cpi_rs2_o,
+    input  logic                      cpi_gnt_i,
+    input  logic                      cpi_instr_illegal_i,
+    input  logic                      cpi_wait_i,
+    input  logic                      cpi_res_valid_i,
+    input  logic [31:0]               cpi_res_i,
 
     // Interrupt signals
     input  logic                      csr_mstatus_mie_i,
@@ -281,6 +293,11 @@ module ibex_id_stage #(
   // CSR control
   logic        csr_pipe_flush;
 
+  // Coprocessor Interface Control
+  logic        cpi_instr_dec;
+  logic        stall_cpi;
+  logic        cpi_done;
+
   logic [31:0] alu_operand_a;
   logic [31:0] alu_operand_b;
 
@@ -412,6 +429,7 @@ module ibex_id_stage #(
     unique case (rf_wdata_sel)
       RF_WD_EX:  rf_wdata_id_o = result_ex_i;
       RF_WD_CSR: rf_wdata_id_o = csr_rdata_i;
+      RF_WD_CPI: rf_wdata_id_o = cpi_res_i;
       default:   rf_wdata_id_o = result_ex_i;
     endcase
   end
@@ -424,7 +442,8 @@ module ibex_id_stage #(
       .RV32E           ( RV32E           ),
       .RV32M           ( RV32M           ),
       .RV32B           ( RV32B           ),
-      .BranchTargetALU ( BranchTargetALU )
+      .BranchTargetALU ( BranchTargetALU ),
+      .CoprocOpcodes   ( CoprocOpcodes   )
   ) decoder_i (
       .clk_i                           ( clk_i                ),
       .rst_ni                          ( rst_ni               ),
@@ -493,6 +512,9 @@ module ibex_id_stage #(
       .data_type_o                     ( lsu_type             ),
       .data_sign_extension_o           ( lsu_sign_ext         ),
 
+      // Coprocessor Interface
+      .cpi_instr_o                     ( cpi_instr_dec        ),
+
       // jump/branches
       .jump_in_dec_o                   ( jump_in_dec          ),
       .branch_in_dec_o                 ( branch_in_dec        )
@@ -528,7 +550,7 @@ module ibex_id_stage #(
   // Controller //
   ////////////////
 
-  assign illegal_insn_o = instr_valid_i & (illegal_insn_dec | illegal_csr_insn_i);
+  assign illegal_insn_o = instr_valid_i & (illegal_insn_dec | illegal_csr_insn_i | (cpi_req_o & cpi_gnt_i & cpi_instr_illegal_i));
 
   ibex_controller #(
     .WritebackStage  ( WritebackStage  ),
@@ -651,6 +673,10 @@ module ibex_id_stage #(
   assign multdiv_operand_a_ex_o      = rf_rdata_a_fwd;
   assign multdiv_operand_b_ex_o      = rf_rdata_b_fwd;
 
+  assign cpi_instr_o                 = instr_rdata_i;
+  assign cpi_rs1_o                   = rf_rdata_a_fwd;
+  assign cpi_rs2_o                   = rf_rdata_b_fwd;
+
   ////////////////////////
   // Branch set control //
   ////////////////////////
@@ -763,6 +789,7 @@ module ibex_id_stage #(
     stall_jump              = 1'b0;
     stall_branch            = 1'b0;
     stall_alu               = 1'b0;
+    stall_cpi               = 1'b0;
     branch_set_raw_d        = 1'b0;
     branch_spec             = 1'b0;
     branch_not_set          = 1'b0;
@@ -822,6 +849,20 @@ module ibex_id_stage #(
               id_fsm_d      = MULTI_CYCLE;
               rf_we_raw     = 1'b0;
             end
+            cpi_instr_dec: begin
+              // Coprocessor operation
+              if (cpi_gnt_i & cpi_wait_i) begin
+                // Enter MULTI_CYCLE state if the operation is acknowledged and Ibex needs to wait
+                // for a write-back value
+                id_fsm_d    = MULTI_CYCLE;
+              end
+              // Stall if the coprocessor operation has not been acknowledged yet or Ibex needs to
+              // wait for a write-back value
+              stall_cpi     = ~cpi_gnt_i | cpi_wait_i;
+              // A write-back from the coprocessor cannot occur unless the instruction has been
+              // acknowledged (earliest one cycle after the acknowledge)
+              rf_we_raw     = 1'b0;
+            end
             default: begin
               id_fsm_d      = FIRST_CYCLE;
             end
@@ -832,6 +873,9 @@ module ibex_id_stage #(
           if(multdiv_en_dec) begin
             rf_we_raw       = rf_we_dec & ex_valid_i;
           end
+          if (cpi_instr_dec) begin
+            rf_we_raw       = rf_we_dec & cpi_res_valid_i;
+          end
 
           if (multicycle_done & ready_wb_i) begin
             id_fsm_d        = FIRST_CYCLE;
@@ -839,6 +883,7 @@ module ibex_id_stage #(
             stall_multdiv   = multdiv_en_dec;
             stall_branch    = branch_in_dec;
             stall_jump      = jump_in_dec;
+            stall_cpi       = cpi_instr_dec;
           end
         end
 
@@ -849,6 +894,9 @@ module ibex_id_stage #(
     end
   end
 
+  assign cpi_req_o = instr_executing & cpi_instr_dec & (id_fsm_q == FIRST_CYCLE);
+  assign cpi_done  = (cpi_req_o & cpi_gnt_i & ~cpi_wait_i) | cpi_res_valid_i;
+
   // Note for the two-stage configuration ready_wb_i is always set
   assign multdiv_ready_id_o = ready_wb_i;
 
@@ -858,7 +906,7 @@ module ibex_id_stage #(
   // Stall ID/EX stage for reason that relates to instruction in ID/EX, update assertion below if
   // modifying this.
   assign stall_id = stall_ld_hz | stall_mem | stall_multdiv | stall_jump | stall_branch |
-                      stall_alu;
+                    stall_alu | stall_cpi;
 
   // Generally illegal instructions have no reason to stall, however they must still stall waiting
   // for outstanding memory requests so exceptions related to them take priority over the illegal
@@ -887,7 +935,7 @@ module ibex_id_stage #(
 
     logic instr_kill;
 
-    assign multicycle_done = lsu_req_dec ? ~stall_mem : ex_valid_i;
+    assign multicycle_done = lsu_req_dec ? ~stall_mem : (cpi_instr_dec ? cpi_done : ex_valid_i);
 
     // Is a memory access ongoing that isn't finishing this cycle
     assign outstanding_memory_access = (outstanding_load_wb_i | outstanding_store_wb_i) &
@@ -987,7 +1035,7 @@ module ibex_id_stage #(
                                (outstanding_memory_access | stall_ld_hz);
   end else begin : gen_no_stall_mem
 
-    assign multicycle_done = lsu_req_dec ? lsu_resp_valid_i : ex_valid_i;
+    assign multicycle_done = lsu_req_dec ? lsu_resp_valid_i : (cpi_instr_dec ? cpi_done : ex_valid_i);
 
     assign data_req_allowed = instr_first_cycle;
 
@@ -1086,7 +1134,8 @@ module ibex_id_stage #(
       IMM_B_INCR_PC})
   `ASSERT(IbexRegfileWdataSelValid, instr_valid_i |-> rf_wdata_sel inside {
       RF_WD_EX,
-      RF_WD_CSR})
+      RF_WD_CSR,
+      RF_WD_CPI})
   `ASSERT_KNOWN(IbexWbStateKnown, id_fsm_q)
 
   // Branch decision must be valid when jumping.
