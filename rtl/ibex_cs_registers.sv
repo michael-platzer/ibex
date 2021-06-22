@@ -26,7 +26,8 @@ module ibex_cs_registers #(
     parameter int unsigned      PMPNumRegions     = 4,
     parameter bit               RV32E             = 0,
     parameter ibex_pkg::rv32m_e RV32M             = ibex_pkg::RV32MFast,
-    parameter ibex_pkg::rv32b_e RV32B             = ibex_pkg::RV32BNone
+    parameter ibex_pkg::rv32b_e RV32B             = ibex_pkg::RV32BNone,
+    parameter int unsigned      ExternalCSRs      = 0
 ) (
     // Clock and Reset
     input  logic                 clk_i,
@@ -53,6 +54,12 @@ module ibex_cs_registers #(
     input  ibex_pkg::csr_op_e    csr_op_i,
     input                        csr_op_en_i,
     output logic [31:0]          csr_rdata_o,
+
+    // External CSR
+    input  logic [11:0]          ecsr_addr_i [ExternalCSRs],
+    input  logic [31:0]          ecsr_rdata_i[ExternalCSRs],
+    output logic                 ecsr_we_o   [ExternalCSRs],
+    output logic [31:0]          ecsr_wdata_o[ExternalCSRs],
 
     // interrupts
     input  logic                 irq_software_i,
@@ -486,6 +493,12 @@ module ibex_cs_registers #(
 
       default: begin
         illegal_csr = 1'b1;
+        for (int i = 0; i < ExternalCSRs; i++) begin
+          if (csr_addr_i == ecsr_addr_i[i]) begin
+            csr_rdata_int = ecsr_rdata_i[i];
+            illegal_csr   = 1'b0;
+          end
+        end
       end
     endcase
   end
@@ -528,6 +541,9 @@ module ibex_cs_registers #(
     mhpmcounterh_we  = '0;
 
     cpuctrl_we       = 1'b0;
+
+    ecsr_we_o        = '{default: 1'b0};
+    ecsr_wdata_o     = '{default: csr_wdata_int};
 
     if (csr_we_int) begin
       unique case (csr_addr_i)
@@ -628,7 +644,13 @@ module ibex_cs_registers #(
 
         CSR_CPUCTRL: cpuctrl_we = 1'b1;
 
-        default:;
+        default: begin
+          for (int i = 0; i < ExternalCSRs; i++) begin
+            if (csr_addr_i == ecsr_addr_i[i]) begin
+              ecsr_we_o[i] = 1'b1;
+            end
+          end
+        end
       endcase
     end
 

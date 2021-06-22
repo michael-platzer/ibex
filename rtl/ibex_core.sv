@@ -21,6 +21,7 @@ module ibex_core import ibex_pkg::*; #(
     parameter bit          RV32E             = 1'b0,
     parameter rv32m_e      RV32M             = RV32MFast,
     parameter rv32b_e      RV32B             = RV32BNone,
+    parameter int unsigned ExternalCSRs      = 0,
     parameter bit          BranchTargetALU   = 1'b0,
     parameter bit          WritebackStage    = 1'b0,
     parameter bit          ICache            = 1'b0,
@@ -93,6 +94,12 @@ module ibex_core import ibex_pkg::*; #(
     input  logic [14:0]                  irq_fast_i,
     input  logic                         irq_nm_i,       // non-maskeable interrupt
     output logic                         irq_pending_o,
+
+    // External CSR
+    input  logic [11:0]                  ecsr_addr_i [ExternalCSRs],
+    input  logic [31:0]                  ecsr_rdata_i[ExternalCSRs],
+    output logic                         ecsr_we_o   [ExternalCSRs],
+    output logic [31:0]                  ecsr_wdata_o[ExternalCSRs],
 
     // Debug Interface
     input  logic                         debug_req_i,
@@ -925,7 +932,8 @@ module ibex_core import ibex_pkg::*; #(
       .PMPNumRegions     ( PMPNumRegions     ),
       .RV32E             ( RV32E             ),
       .RV32M             ( RV32M             ),
-      .RV32B             ( RV32B             )
+      .RV32B             ( RV32B             ),
+      .ExternalCSRs      ( ExternalCSRs      )
   ) cs_registers_i (
       .clk_i                   ( clk_i                        ),
       .rst_ni                  ( rst_ni                       ),
@@ -948,6 +956,12 @@ module ibex_core import ibex_pkg::*; #(
       .csr_op_i                ( csr_op                       ),
       .csr_op_en_i             ( csr_op_en                    ),
       .csr_rdata_o             ( csr_rdata                    ),
+
+      // External CSR
+      .ecsr_addr_i,
+      .ecsr_rdata_i,
+      .ecsr_we_o,
+      .ecsr_wdata_o,
 
       // Interrupt related control signals
       .irq_software_i          ( irq_software_i               ),

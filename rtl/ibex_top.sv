@@ -22,6 +22,7 @@ module ibex_top #(
     parameter ibex_pkg::rv32m_e   RV32M            = ibex_pkg::RV32MFast,
     parameter ibex_pkg::rv32b_e   RV32B            = ibex_pkg::RV32BNone,
     parameter ibex_pkg::regfile_e RegFile          = ibex_pkg::RegFileFF,
+    parameter int unsigned        ExternalCSRs     = 0,
     parameter bit                 BranchTargetALU  = 1'b0,
     parameter bit                 WritebackStage   = 1'b0,
     parameter bit                 ICache           = 1'b0,
@@ -68,6 +69,12 @@ module ibex_top #(
     input  logic                         irq_external_i,
     input  logic [14:0]                  irq_fast_i,
     input  logic                         irq_nm_i,       // non-maskeable interrupt
+
+    // External CSR
+    input  logic [11:0]                  ecsr_addr_i [ExternalCSRs],
+    input  logic [31:0]                  ecsr_rdata_i[ExternalCSRs],
+    output logic                         ecsr_we_o   [ExternalCSRs],
+    output logic [31:0]                  ecsr_wdata_o[ExternalCSRs],
 
     // Debug Interface
     input  logic                         debug_req_i,
@@ -197,6 +204,7 @@ module ibex_top #(
     .RV32E             ( RV32E             ),
     .RV32M             ( RV32M             ),
     .RV32B             ( RV32B             ),
+    .ExternalCSRs      ( ExternalCSRs      ),
     .BranchTargetALU   ( BranchTargetALU   ),
     .ICache            ( ICache            ),
     .ICacheECC         ( ICacheECC         ),
@@ -263,6 +271,11 @@ module ibex_top #(
     .irq_fast_i,
     .irq_nm_i,
     .irq_pending_o (irq_pending),
+
+    .ecsr_addr_i,
+    .ecsr_rdata_i,
+    .ecsr_we_o,
+    .ecsr_wdata_o,
 
     .debug_req_i,
     .crash_dump_o,
