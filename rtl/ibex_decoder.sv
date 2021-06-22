@@ -14,10 +14,11 @@
 `include "prim_assert.sv"
 
 module ibex_decoder #(
-    parameter bit RV32E               = 0,
-    parameter ibex_pkg::rv32m_e RV32M = ibex_pkg::RV32MFast,
-    parameter ibex_pkg::rv32b_e RV32B = ibex_pkg::RV32BNone,
-    parameter bit BranchTargetALU     = 0
+    parameter bit RV32E                = 0,
+    parameter ibex_pkg::rv32m_e RV32M  = ibex_pkg::RV32MFast,
+    parameter ibex_pkg::rv32b_e RV32B  = ibex_pkg::RV32BNone,
+    parameter bit BranchTargetALU      = 0,
+    parameter bit [31:0] CoprocOpcodes = '0
 ) (
     input  logic                 clk_i,
     input  logic                 rst_ni,
@@ -91,6 +92,9 @@ module ibex_decoder #(
                                                         // word or word
     output logic                 data_sign_extension_o, // sign extension for data read from
                                                         // memory
+
+    // Coprocessor Interface
+    output logic                 cpi_instr_o,           // forward instruction to coprocessor
 
     // jump/branches
     output logic                 jump_in_dec_o,         // jump is being calculated in ALU
@@ -224,6 +228,8 @@ module ibex_decoder #(
     data_type_o           = 2'b00;
     data_sign_extension_o = 1'b0;
     data_req_o            = 1'b0;
+
+    cpi_instr_o           = 1'b0;
 
     illegal_insn          = 1'b0;
     ebrk_insn_o           = 1'b0;
@@ -623,10 +629,25 @@ module ibex_decoder #(
 
           illegal_insn = csr_illegal;
         end
-
       end
+
+      /////////////////
+      // Coprocessor //
+      /////////////////
+
       default: begin
         illegal_insn = 1'b1;
+        // Check if major opcode of instruction matches any of the specified coprocessor opcodes
+        for (int i = 0; i < 32; i++) begin
+          if (CoprocOpcodes[i] & (instr[6:2] == i)) begin
+            cpi_instr_o    = 1'b1;
+            rf_ren_a_o     = 1'b1;      // speculatively read rs1 in case it is needed
+            rf_ren_b_o     = 1'b1;      // speculatively read rs2 in case it is needed
+            rf_we          = 1'b1;      // speculatively enable write-back in case it is needed
+            rf_wdata_sel_o = RF_WD_CPI;
+            illegal_insn   = 1'b0;
+          end
+        end
       end
     endcase
 

@@ -32,7 +32,8 @@ module ibex_top #(
     parameter int unsigned        DbgHwBreakNum    = 1,
     parameter bit                 SecureIbex       = 1'b0,
     parameter int unsigned        DmHaltAddr       = 32'h1A110800,
-    parameter int unsigned        DmExceptionAddr  = 32'h1A110808
+    parameter int unsigned        DmExceptionAddr  = 32'h1A110808,
+    parameter bit [31:0]          CoprocOpcodes    = '0
 ) (
     // Clock and Reset
     input  logic                         clk_i,
@@ -62,6 +63,17 @@ module ibex_top #(
     output logic [31:0]                  data_wdata_o,
     input  logic [31:0]                  data_rdata_i,
     input  logic                         data_err_i,
+
+    // Coprocessor Interface
+    output logic                         cpi_req_o,
+    output logic [31:0]                  cpi_instr_o,
+    output logic [31:0]                  cpi_rs1_o,
+    output logic [31:0]                  cpi_rs2_o,
+    input  logic                         cpi_gnt_i,
+    input  logic                         cpi_instr_illegal_i,
+    input  logic                         cpi_wait_i,
+    input  logic                         cpi_res_valid_i,
+    input  logic [31:0]                  cpi_res_i,
 
     // Interrupt inputs
     input  logic                         irq_software_i,
@@ -220,7 +232,8 @@ module ibex_top #(
     .RegFileECC        ( RegFileECC        ),
     .RegFileDataWidth  ( RegFileDataWidth  ),
     .DmHaltAddr        ( DmHaltAddr        ),
-    .DmExceptionAddr   ( DmExceptionAddr   )
+    .DmExceptionAddr   ( DmExceptionAddr   ),
+    .CoprocOpcodes     ( CoprocOpcodes     )
   ) u_ibex_core (
     .clk_i (clk),
     .rst_ni,
@@ -244,6 +257,16 @@ module ibex_top #(
     .data_wdata_o,
     .data_rdata_i,
     .data_err_i,
+
+    .cpi_req_o,
+    .cpi_instr_o,
+    .cpi_rs1_o,
+    .cpi_rs2_o,
+    .cpi_gnt_i,
+    .cpi_instr_illegal_i,
+    .cpi_wait_i,
+    .cpi_res_valid_i,
+    .cpi_res_i,
 
     .dummy_instr_id_o  (dummy_instr_id),
     .rf_raddr_a_o      (rf_raddr_a),
